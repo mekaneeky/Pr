@@ -1,36 +1,35 @@
-#include <ArduinoJson.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 
-#define WIFI_AP "KmtHouse"
-#define WIFI_PASSWORD "welovehacking!"
-#define TOKEN "1Qc6DFUQefwhnMrMULdp"
+#define WIFI_AP "KMT House_1"
+#define WIFI_PASSWORD "welovehacking1"
+
+#define TOKEN "g4uh5TARYuPMPZmsibRo"
+
+char thingsboardServer[] = "10.10.120.102";
 
 #define GPIO0 0
 #define GPIO2 2
 
 #define GPIO0_PIN 4
 #define GPIO2_PIN 5
-boolean gpioState[] = {false, false};
 
-const byte numChars = 128;
-char receivedChars[numChars];
-int new_num;
-boolean newData = false;
-char thingsboardServer[] = "10.10.100.41";
-int ESP_I;
+
 WiFiClient wifiClient;
+
+
 PubSubClient client(wifiClient);
 
 int status = WL_IDLE_STATUS;
+
+boolean gpioState[] = {false, false};
+
 unsigned long lastSend;
 
 void setup()
 {
-  pinMode(4, OUTPUT);
-  delay(10);
-  Serial.begin(9600);
-  delay(10);
+  Serial.begin(115200);
   pinMode(GPIO0, OUTPUT);
   pinMode(GPIO2, OUTPUT);
   delay(10);
@@ -46,44 +45,41 @@ void loop()
     reconnect();
   }
 
-
   if ( millis() - lastSend > 1000 ) { // Update and send only after 1 seconds
-    chararray2str(receivedChars);  // Handle REST calls
-    recvWithStartEndMarkers();
+    getAndSendData();
     lastSend = millis();
-    sendCurrentData();
-    }
+  }
 
   client.loop();
 }
 
-void sendCurrentData()
+void getAndSendData()
 {
-  Serial.println("Collecting Current data.");
+  Serial.println("Collecting data.");
 
   // Reading temperature or humidity takes about 250 milliseconds!
- // int ESP_I = grabfromserialhere;
-  // Read temperature as Celsius (the default)
+  float dat = analogRead(A0);
 
   // Check if any reads failed and exit early (to try again).
-/**  if (isnan(ESP_I)) {
-    Serial.println("Failed to read from Current sensor!");
+  if (isnan(dat)) {
+    Serial.println("Failed to read data!");
     return;
   }
-**/
-  Serial.print("Current: ");
-  //Serial.print(ESP_I);
 
-//  String current = String(ESP_I);
+  Serial.print("Data: ");
+  Serial.print(dat);
+
+  String dataz = String(dat);
+
 
   // Just debug messages
-  Serial.print( "Sending Current : [" );
-//  Serial.print( current ); 
+  Serial.print( "Sending data : [" );
+  Serial.print( dataz );
   Serial.print( "]   -> " );
 
   // Prepare a JSON payload string
   String payload = "{";
-  payload += "\"Current\":"; payload += String(ESP_I);
+  payload += "\"data\":"; payload += dataz;
   payload += "}";
 
   // Send payload
@@ -124,6 +120,11 @@ void reconnect() {
     // Attempt to connect (clientId, username, password)
     if ( client.connect("ESP8266 Device", TOKEN, NULL) ) {
       Serial.println( "[DONE]" );
+      // Subscribing to receive RPC requests
+      client.subscribe("v1/devices/me/rpc/request/+");
+      // Sending current GPIO status
+      Serial.println("Sending current GPIO status ...");
+      client.publish("v1/devices/me/attributes", get_gpio_status().c_str());
     } else {
       Serial.print( "[FAILED] [ rc = " );
       Serial.print( client.state() );
@@ -135,47 +136,8 @@ void reconnect() {
 }
 
 
-void recvWithStartEndMarkers() {
-    static boolean recvInProgress = false;
-    static byte ndx = 0;
-    char startMarker = '<';
-    char endMarker = '>';
-    char rc;
- 
-    while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
 
-        if (recvInProgress == true) {
-            if (rc != endMarker) {
-                receivedChars[ndx] = rc;
-                ndx++;
-                if (ndx >= numChars) {
-                    ndx = numChars - 1;
-                }
-            }
-            else {
-                receivedChars[ndx] = '\0'; // terminate the string
-                recvInProgress = false;
-                ndx = 0;
-                newData = true;
-            }
-        }
-
-        else if (rc == startMarker) {
-            recvInProgress = true;
-        }
-    }
-}
-
-void chararray2str(char *arg){
-  if (newData == true) {
-  sscanf(arg, "%d", &ESP_I);
-  newData = false;
-  Serial.print("Debug chararray2str: ");
-  Serial.print(ESP_I);
-}
-}
-
+// The callback for when a PUBLISH message is received from the server.
 void on_message(const char* topic, byte* payload, unsigned int length) {
 
   Serial.println("On message");
@@ -244,5 +206,4 @@ void set_gpio_status(int pin, boolean enabled) {
     gpioState[1] = enabled;
   }
 }
-
 
